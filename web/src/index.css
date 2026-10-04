@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #f7f1e8;
+  --color-paper: #fffaf2;
+  --color-plum: #3d1747;
+  --color-plum-soft: #6b3a75;
+  --color-coral: #e8674a;
+  --color-gold: #d9a441;
+  --color-ink: #2a1e2c;
+  --color-line: #e6dccd;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+.card {
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 0 #fff inset, 0 12px 30px -18px rgb(61 23 71 / 0.35);
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.9rem;
+}
+.input:focus {
+  outline: 2px solid var(--color-coral);
+  outline-offset: 1px;
+}
+
+.btn {
+  border-radius: 999px;
+  padding: 0.65rem 1.3rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 0.08s ease, opacity 0.15s;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--color-plum); color: var(--color-cream); }
+.btn-coral { background: var(--color-coral); color: #fff; }
+.btn-ghost { border: 1px solid var(--color-line); background: transparent; }
