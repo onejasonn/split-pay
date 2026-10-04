@@ -18,7 +18,7 @@ export default function App() {
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
         <div className="flex items-center gap-2.5">
-          <img src="/favicon.svg" alt="" className="h-8 w-8" />
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-8 w-8" />
           <span className="font-display text-xl font-bold text-plum">Split Pay</span>
           <span className="ml-2 rounded-full bg-plum/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-plum">
             testnet
