@@ -83,6 +83,12 @@ stellar contract invoke --id <CONTRACT_ID> --source me --network testnet -- \
   pay --split_id 1 --payer me --token <XLM_SAC_ID> --amount 1000000000
 ```
 
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Integration guide](docs/integration-guide.md)
+- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Changelog](CHANGELOG.md)
+
 ## Glossary (new to Stellar?)
 
 - **Soroban**: Stellar's smart-contract platform. Contracts are written in
