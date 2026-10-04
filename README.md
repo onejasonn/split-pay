@@ -83,6 +83,27 @@ stellar contract invoke --id <CONTRACT_ID> --source me --network testnet -- \
   pay --split_id 1 --payer me --token <XLM_SAC_ID> --amount 1000000000
 ```
 
+## Web app
+
+![Split Pay web app](docs/assets/web-app.png)
+
+A full dApp for the contract, at `web/`:
+
+- **Pay into a split**: load a split by id, see each recipient's share on a live donut chart, preview the exact payout of any amount (dust included), and pay in XLM or any Stellar asset.
+- **Create a split**: an editor for recipients and percentages with a live 100% meter and chart, validated before you sign.
+- **Manage**: the owner can update recipients, transfer ownership (e.g. to a multisig) or lock the split forever.
+
+```bash
+cd web
+npm install
+npm run dev        # http://localhost:5173
+```
+
+It talks to the contract deployed on **Stellar testnet** and signs with
+[Freighter](https://www.freighter.app) (switch it to Testnet). Point it at
+another deployment with `VITE_CONTRACT_ID` (see `web/.env.example`).
+`netlify.toml` at the repo root deploys it as-is.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
