@@ -70,7 +70,7 @@ export function Shell({ route, wallet, children }: { route: string; wallet: Wall
         )}
       </header>
 
-      <div className="flex-1">{children}</div>
+      <main className="flex-1">{children}</main>
 
       <footer className="mt-16 border-t border-line bg-paper">
         <div className="mx-auto grid max-w-6xl gap-8 px-5 py-10 sm:grid-cols-3">
