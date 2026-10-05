@@ -46,6 +46,8 @@ pub struct Split {
 pub enum DataKey {
     NextId,
     Split(u64),
+    /// Owner-to-be awaiting `accept_ownership`.
+    PendingOwner(u64),
 }
 
 #[contracterror]
@@ -60,6 +62,7 @@ pub enum Error {
     DuplicateRecipient = 6,
     InvalidAmount = 7,
     SplitLocked = 8,
+    NoPendingOwner = 9,
 }
 
 #[contractevent(topics = ["split", "created"], data_format = "single-value")]
@@ -83,6 +86,15 @@ pub struct SplitLockedEvent {
 #[contractevent(topics = ["split", "owner"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OwnershipTransferred {
+    #[topic]
+    pub split_id: u64,
+    pub from: Address,
+    pub to: Address,
+}
+
+#[contractevent(topics = ["split", "proposed"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OwnershipProposed {
     #[topic]
     pub split_id: u64,
     pub from: Address,
@@ -160,12 +172,76 @@ impl SplitPayContract {
         Ok(())
     }
 
-    /// Hand the split to a new owner (e.g. a multisig). Owner only.
+    /// Step 1 of a safe handover: name the next owner. Nothing changes until
+    /// they call `accept_ownership`, so a typo can't lose the split. Owner only.
+    pub fn propose_owner(env: Env, split_id: u64, new_owner: Address) -> Result<(), Error> {
+        let split = Self::get_split(env.clone(), split_id)?;
+        split.owner.require_auth();
+        let key = DataKey::PendingOwner(split_id);
+        env.storage().persistent().set(&key, &new_owner);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
+        OwnershipProposed {
+            split_id,
+            from: split.owner,
+            to: new_owner,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Step 2: the proposed owner takes over.
+    pub fn accept_ownership(env: Env, split_id: u64) -> Result<(), Error> {
+        let mut split = Self::get_split(env.clone(), split_id)?;
+        let key = DataKey::PendingOwner(split_id);
+        let next: Address = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::NoPendingOwner)?;
+        next.require_auth();
+        let from = split.owner.clone();
+        split.owner = next.clone();
+        env.storage().persistent().remove(&key);
+        save(&env, &split);
+        OwnershipTransferred {
+            split_id,
+            from,
+            to: next,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Withdraw a pending proposal. Owner only.
+    pub fn cancel_ownership_transfer(env: Env, split_id: u64) -> Result<(), Error> {
+        let split = Self::get_split(env.clone(), split_id)?;
+        split.owner.require_auth();
+        let key = DataKey::PendingOwner(split_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::NoPendingOwner);
+        }
+        env.storage().persistent().remove(&key);
+        Ok(())
+    }
+
+    pub fn pending_owner(env: Env, split_id: u64) -> Option<Address> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingOwner(split_id))
+    }
+
+    /// Hand the split to a new owner immediately. Prefer `propose_owner` +
+    /// `accept_ownership`, which can't be lost to a mistyped address.
     pub fn transfer_ownership(env: Env, split_id: u64, new_owner: Address) -> Result<(), Error> {
         let mut split = Self::get_split(env.clone(), split_id)?;
         split.owner.require_auth();
         let from = split.owner.clone();
         split.owner = new_owner.clone();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingOwner(split_id));
         save(&env, &split);
         OwnershipTransferred {
             split_id,
