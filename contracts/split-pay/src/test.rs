@@ -333,3 +333,58 @@ fn split_and_counter_stay_live_with_only_payments() {
     assert_eq!(s.client.split_count(), 1);
     assert_eq!(s.client.get_split(&id).id, id);
 }
+
+#[test]
+fn two_step_ownership_only_changes_on_accept() {
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let next = Address::generate(&s.env);
+    let id = s
+        .client
+        .create_split(&owner, &vec![&s.env, r(&s.env, 10_000)]);
+
+    assert_eq!(
+        s.client.try_accept_ownership(&id),
+        Err(Ok(Error::NoPendingOwner))
+    );
+    s.client.propose_owner(&id, &next);
+    assert_eq!(s.client.pending_owner(&id), Some(next.clone()));
+    assert_eq!(s.client.get_split(&id).owner, owner); // nothing changed yet
+
+    s.client.accept_ownership(&id);
+    assert_eq!(s.client.get_split(&id).owner, next);
+    assert_eq!(s.client.pending_owner(&id), None);
+}
+
+#[test]
+fn a_pending_transfer_can_be_cancelled() {
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let id = s
+        .client
+        .create_split(&owner, &vec![&s.env, r(&s.env, 10_000)]);
+    s.client.propose_owner(&id, &Address::generate(&s.env));
+    s.client.cancel_ownership_transfer(&id);
+    assert_eq!(s.client.pending_owner(&id), None);
+    assert_eq!(
+        s.client.try_accept_ownership(&id),
+        Err(Ok(Error::NoPendingOwner))
+    );
+    assert_eq!(
+        s.client.try_cancel_ownership_transfer(&id),
+        Err(Ok(Error::NoPendingOwner))
+    );
+}
+
+#[test]
+#[should_panic]
+fn only_the_proposed_owner_can_accept() {
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let id = s
+        .client
+        .create_split(&owner, &vec![&s.env, r(&s.env, 10_000)]);
+    s.client.propose_owner(&id, &Address::generate(&s.env));
+    s.env.set_auths(&[]);
+    s.client.accept_ownership(&id);
+}
