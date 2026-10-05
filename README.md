@@ -87,6 +87,10 @@ stellar contract invoke --id <CONTRACT_ID> --source me --network testnet -- \
 
 ![Split Pay web app](docs/assets/web-app.png)
 
+The site has three pages: **Home** (what it does, with live testnet data), **App** (the tool itself) and **Docs** (getting started, concepts, reference and FAQ).
+
+![split-pay app page](docs/assets/web-app-page.png)
+
 A full dApp for the contract, at `web/`:
 
 - **Pay into a split**: load a split by id, see each recipient's share on a live donut chart, preview the exact payout of any amount (dust included), and pay in XLM or any Stellar asset.
