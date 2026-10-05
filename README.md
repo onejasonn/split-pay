@@ -34,10 +34,13 @@ Use it for:
 | `create_split(owner, recipients)` | owner | Registers a split; returns its id |
 | `update_split(split_id, recipients)` | owner | Replaces recipients (only while unlocked) |
 | `lock_split(split_id)` | owner | Freezes recipients forever |
-| `transfer_ownership(split_id, new_owner)` | owner | Hands control to another address (e.g. a multisig) |
+| `propose_owner(split_id, new_owner)` | owner | Step 1 of a safe handover (e.g. to a multisig) |
+| `accept_ownership(split_id)` | new owner | Step 2: takes over; a mistyped address can never accept |
+| `cancel_ownership_transfer(split_id)` | owner | Withdraws a pending proposal |
+| `transfer_ownership(split_id, new_owner)` | owner | One-step handover, kept for compatibility; prefer the two steps above |
 | `pay(split_id, payer, token, amount)` | payer | Pays `amount` of `token` out to every recipient |
 | `preview(split_id, amount)` | anyone | Shows how `amount` would be divided, moving nothing |
-| `get_split(split_id)` / `split_count()` | anyone | Read state |
+| `get_split(split_id)` / `split_count()` / `pending_owner(split_id)` | anyone | Read state |
 
 `recipients` is a list of `{ address, share_bps }` where `share_bps` is
 in basis points: `10000` = 100%, `2500` = 25%.
@@ -63,7 +66,7 @@ Requires Rust and the [Stellar CLI](https://developers.stellar.org/docs/tools/cl
 
 ```bash
 cd contracts
-cargo test                                   # 13 unit tests
+cargo test                                   # 19 unit tests
 stellar contract build                       # → target/wasm32v1-none/release/split_pay.wasm
 
 stellar keys generate me --network testnet --fund
