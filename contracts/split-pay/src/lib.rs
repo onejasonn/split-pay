@@ -80,6 +80,15 @@ pub struct SplitLockedEvent {
     pub split_id: u64,
 }
 
+#[contractevent(topics = ["split", "owner"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OwnershipTransferred {
+    #[topic]
+    pub split_id: u64,
+    pub from: Address,
+    pub to: Address,
+}
+
 #[contractevent(topics = ["split", "paid"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SplitPaid {
@@ -88,6 +97,8 @@ pub struct SplitPaid {
     pub payer: Address,
     pub token: Address,
     pub amount: i128,
+    /// What each recipient received, in recipient order (dust included).
+    pub payouts: Vec<i128>,
 }
 
 // Keep live splits from being archived: bumped on every write and payment.
@@ -153,9 +164,15 @@ impl SplitPayContract {
     pub fn transfer_ownership(env: Env, split_id: u64, new_owner: Address) -> Result<(), Error> {
         let mut split = Self::get_split(env.clone(), split_id)?;
         split.owner.require_auth();
-        split.owner = new_owner;
+        let from = split.owner.clone();
+        split.owner = new_owner.clone();
         save(&env, &split);
-        SplitUpdated { split_id }.publish(&env);
+        OwnershipTransferred {
+            split_id,
+            from,
+            to: new_owner,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -173,7 +190,7 @@ impl SplitPayContract {
             return Err(Error::InvalidAmount);
         }
         let split = Self::get_split(env.clone(), split_id)?;
-        let shares = payout_amounts(&env, &split.recipients, amount);
+        let shares = payout_amounts(&env, &split.recipients, amount)?;
 
         let client = token::Client::new(&env, &token);
         for (i, recipient) in split.recipients.iter().enumerate() {
@@ -183,12 +200,14 @@ impl SplitPayContract {
             }
         }
 
-        save(&env, &split);
+        // Only the TTL needs refreshing; the split itself is unchanged.
+        bump(&env, split_id);
         SplitPaid {
             split_id,
             payer,
             token,
             amount,
+            payouts: shares,
         }
         .publish(&env);
         Ok(())
@@ -200,7 +219,7 @@ impl SplitPayContract {
             return Err(Error::InvalidAmount);
         }
         let split = Self::get_split(env.clone(), split_id)?;
-        Ok(payout_amounts(&env, &split.recipients, amount))
+        payout_amounts(&env, &split.recipients, amount)
     }
 
     pub fn get_split(env: Env, split_id: u64) -> Result<Split, Error> {
@@ -244,11 +263,18 @@ fn validate(recipients: &Vec<Recipient>) -> Result<(), Error> {
 /// Pro-rata amounts per recipient, in recipient order. Integer division
 /// rounds each share down; the remainder goes to recipient 0 so the
 /// amounts always sum to exactly `amount`.
-fn payout_amounts(env: &Env, recipients: &Vec<Recipient>, amount: i128) -> Vec<i128> {
+fn payout_amounts(
+    env: &Env,
+    recipients: &Vec<Recipient>,
+    amount: i128,
+) -> Result<Vec<i128>, Error> {
     let mut out = Vec::new(env);
     let mut distributed: i128 = 0;
     for r in recipients.iter() {
-        let share = amount * (r.share_bps as i128) / (TOTAL_BPS as i128);
+        let share = amount
+            .checked_mul(r.share_bps as i128)
+            .ok_or(Error::InvalidAmount)?
+            / (TOTAL_BPS as i128);
         distributed += share;
         out.push_back(share);
     }
@@ -257,15 +283,22 @@ fn payout_amounts(env: &Env, recipients: &Vec<Recipient>, amount: i128) -> Vec<i
         let first = out.get(0).unwrap();
         out.set(0, first + dust);
     }
-    out
+    Ok(out)
 }
 
 fn save(env: &Env, split: &Split) {
-    let key = DataKey::Split(split.id);
-    env.storage().persistent().set(&key, split);
     env.storage()
         .persistent()
-        .extend_ttl(&key, BUMP_THRESHOLD, BUMP_TO);
+        .set(&DataKey::Split(split.id), split);
+    bump(env, split.id);
+}
+
+/// Keep a split and the contract instance (which holds the id counter) alive.
+fn bump(env: &Env, split_id: u64) {
+    env.storage()
+        .persistent()
+        .extend_ttl(&DataKey::Split(split_id), BUMP_THRESHOLD, BUMP_TO);
+    env.storage().instance().extend_ttl(BUMP_THRESHOLD, BUMP_TO);
 }
 
 fn next_id(env: &Env) -> u64 {

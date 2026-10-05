@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CONTRACT_ID } from "./config";
 import { contractLink } from "./lib/stellar";
 import { short } from "./lib/format";
@@ -13,6 +13,22 @@ const NAV = [
 
 export function Shell({ route, wallet, children }: { route: string; wallet: Wallet; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Close on navigation; Escape closes and hands focus back to the toggle.
+  useEffect(() => setOpen(false), [route]);
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLElement>("a, button")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        toggleRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-line/70 bg-cream/85 backdrop-blur">
@@ -38,12 +54,12 @@ export function Shell({ route, wallet, children }: { route: string; wallet: Wall
           <div className="hidden md:block">
             <WalletButton {...wallet} />
           </div>
-          <button className="rounded-lg border border-line px-3 py-2 text-plum md:hidden" onClick={() => setOpen((v) => !v)} aria-label="Menu">
+          <button className="rounded-lg border border-line px-3 py-2 text-plum md:hidden" onClick={() => setOpen((v) => !v)} ref={toggleRef} aria-label="Menu" aria-controls="mobile-menu">
             {open ? "✕" : "☰"}
           </button>
         </div>
         {open && (
-          <div className="space-y-2 border-t border-line px-5 py-4 md:hidden" onClick={() => setOpen(false)}>
+          <div id="mobile-menu" ref={menuRef} className="space-y-2 border-t border-line px-5 py-4 md:hidden" onClick={() => setOpen(false)}>
             {NAV.map(([to, label]) => (
               <Link key={to} to={to} className="block rounded-lg px-3 py-2 font-semibold text-plum hover:bg-white">
                 {label}
@@ -67,7 +83,7 @@ export function Shell({ route, wallet, children }: { route: string; wallet: Wall
             <ul className="mt-2 space-y-1.5 text-ink/70">
               <li><Link to="/app">Open the app</Link></li>
               <li><Link to="/docs">Documentation</Link></li>
-              <li><Link to="/docs" onClick={() => setTimeout(() => document.getElementById("faq")?.scrollIntoView(), 50)}>FAQ</Link></li>
+              <li><Link to="/docs/faq">FAQ</Link></li>
             </ul>
           </div>
           <div className="text-sm">
