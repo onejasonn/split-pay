@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StrKey } from "@stellar/stellar-sdk";
-import { PALETTE, splitPay, type Recipient, type Split } from "./config";
+import { allSplits, PALETTE, pendingOwner, splitPay, type Recipient, type Split } from "./config";
 import { Donut } from "./components/Donut";
 import { recipientsScVal } from "./scval";
 import { addr, i128, txLink, u64, XLM_SAC } from "./lib/stellar";
@@ -40,11 +40,11 @@ export function Workspace({ wallet }: { wallet: Wallet }) {
         ))}
       </nav>
 
-      <main className="mx-auto max-w-6xl px-5 py-8">
+      <div className="mx-auto max-w-6xl px-5 py-8">
         {tab === "pay" && <PayPanel wallet={wallet} />}
         {tab === "create" && <CreatePanel wallet={wallet} onCreated={() => setTab("manage")} />}
         {tab === "manage" && <ManagePanel wallet={wallet} />}
-      </main>
+      </div>
 
     </div>
   );
@@ -322,16 +322,63 @@ function CreatePanel({ wallet, onCreated }: { wallet: Wallet; onCreated: () => v
   );
 }
 
+function MySplits({ me, onOpen }: { me: string; onOpen: (id: bigint) => void }) {
+  const [splits, setSplits] = useState<Split[] | null>(null);
+  useEffect(() => {
+    setSplits(null);
+    allSplits()
+      .then((all) => setSplits(all.filter((s) => s.owner === me || s.recipients.some((r) => r.address === me))))
+      .catch(() => setSplits([]));
+  }, [me]);
+  if (splits === null) return <p className="mt-4 text-sm text-ink/60">Finding your splits…</p>;
+  if (splits.length === 0) return <p className="mt-4 text-sm text-ink/60">This wallet doesn't own or receive from any split yet.</p>;
+  return (
+    <ul className="mt-4 divide-y divide-line rounded-xl border border-line">
+      {splits.map((s) => {
+        const mine = s.recipients.find((r) => r.address === me);
+        return (
+          <li key={String(s.id)} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+            <span>
+              <b className="text-plum">Split #{String(s.id)}</b>{" "}
+              {s.owner === me && <span className="ml-1 rounded-full bg-plum/10 px-2 py-0.5 text-xs font-semibold text-plum">owner</span>}
+              {mine && (
+                <span className="ml-1 rounded-full bg-coral/10 px-2 py-0.5 text-xs font-semibold text-coral">
+                  receives {mine.share_bps / 100}%
+                </span>
+              )}
+              {s.locked && <span className="ml-1 text-xs text-ink/50">🔒</span>}
+            </span>
+            <button className="btn btn-ghost py-1 text-plum" onClick={() => onOpen(s.id)}>
+              Open
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function ManagePanel({ wallet }: { wallet: Wallet }) {
   const { split, setSplit, load, action } = useSplit();
   const [id, setId] = useState("");
   const [rows, setRows] = useState<Recipient[]>([]);
   const [newOwner, setNewOwner] = useState("");
+  const [pending, setPending] = useState<string | null | undefined>(undefined);
   const write = useAction();
   const isOwner = !!split && wallet.address === split.owner;
+  const twoStep = pending !== undefined; // contract supports propose/accept
+
+  useEffect(() => {
+    if (split) pendingOwner(split.id).then(setPending);
+  }, [split]);
 
   const reload = async () => {
     const s = await load(String(split?.id ?? id));
+    if (s) setRows(s.recipients);
+  };
+  const open = async (splitId: bigint) => {
+    setId(String(splitId));
+    const s = await load(String(splitId));
     if (s) setRows(s.recipients);
   };
 
@@ -349,6 +396,30 @@ function ManagePanel({ wallet }: { wallet: Wallet }) {
         <input className="input" placeholder="Split id" value={id} onChange={(e) => setId(e.target.value)} />
         <button className="btn btn-ghost">Load</button>
       </form>
+      {wallet.address && !split && <MySplits me={wallet.address} onOpen={open} />}
+      {split && pending && wallet.address === pending && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-coral/40 bg-coral/5 p-4 text-sm">
+          <span>You've been offered ownership of split #{String(split.id)}.</span>
+          <button
+            className="btn btn-coral"
+            disabled={write.busy !== null}
+            onClick={() =>
+              write.run(
+                "accept",
+                async () => {
+                  const r = await splitPay.invoke(wallet.address!, "accept_ownership", [u64(split.id)]);
+                  await reload();
+                  setPending(null);
+                  return r;
+                },
+                (r) => ({ text: "You now own this split.", hash: r.hash }),
+              )
+            }
+          >
+            Accept ownership
+          </button>
+        </div>
+      )}
       <div className="mt-3">
         <Status action={action} />
       </div>
@@ -388,6 +459,33 @@ function ManagePanel({ wallet }: { wallet: Wallet }) {
               </button>
               <div className="rounded-xl border border-line p-4">
                 <p className="text-sm font-semibold">Transfer ownership</p>
+                {twoStep && (
+                  <p className="mt-1 text-xs text-ink/60">
+                    The new owner has to accept from their own wallet, so a mistyped address can't take the split.
+                  </p>
+                )}
+                {pending && (
+                  <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    Waiting for <span className="font-mono">{short(pending, 6)}</span> to accept.
+                    <button
+                      className="underline"
+                      disabled={write.busy !== null}
+                      onClick={() =>
+                        write.run(
+                          "cancel",
+                          async () => {
+                            const r = await splitPay.invoke(wallet.address!, "cancel_ownership_transfer", [u64(split.id)]);
+                            setPending(null);
+                            return r;
+                          },
+                          (r) => ({ text: "Transfer cancelled.", hash: r.hash }),
+                        )
+                      }
+                    >
+                      Cancel
+                    </button>
+                  </p>
+                )}
                 <input
                   className="input mt-2 font-mono text-xs"
                   placeholder="New owner (e.g. a multisig)"
@@ -401,15 +499,20 @@ function ManagePanel({ wallet }: { wallet: Wallet }) {
                     write.run(
                       "transfer",
                       async () => {
+                        if (twoStep) {
+                          const r = await splitPay.invoke(wallet.address!, "propose_owner", [u64(split.id), addr(newOwner)]);
+                          setPending(newOwner);
+                          return r;
+                        }
                         const r = await splitPay.invoke(wallet.address!, "transfer_ownership", [u64(split.id), addr(newOwner)]);
                         setSplit({ ...split, owner: newOwner });
                         return r;
                       },
-                      (r) => ({ text: "Ownership transferred.", hash: r.hash }),
+                      (r) => ({ text: twoStep ? "Proposed. The new owner can now accept." : "Ownership transferred.", hash: r.hash }),
                     )
                   }
                 >
-                  Transfer
+                  {twoStep ? "Propose new owner" : "Transfer"}
                 </button>
               </div>
               <div className="rounded-xl border border-coral/40 bg-coral/5 p-4">
