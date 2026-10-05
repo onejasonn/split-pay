@@ -279,3 +279,57 @@ fn works_with_any_number_of_tokens() {
     assert_eq!(s.token_client.balance(&a.address), 50);
     assert_eq!(token::Client::new(&s.env, &other).balance(&b.address), 100);
 }
+
+#[test]
+fn huge_amounts_fail_cleanly_instead_of_overflowing() {
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let id = s
+        .client
+        .create_split(&owner, &vec![&s.env, r(&s.env, 6_000), r(&s.env, 4_000)]);
+    assert_eq!(
+        s.client.try_preview(&id, &(i128::MAX / 2)),
+        Err(Ok(Error::InvalidAmount))
+    );
+    let payer = Address::generate(&s.env);
+    assert_eq!(
+        s.client.try_pay(&id, &payer, &s.token, &(i128::MAX / 2)),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
+fn ownership_transfer_emits_its_own_event() {
+    use soroban_sdk::testutils::Events as _;
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let next = Address::generate(&s.env);
+    let id = s
+        .client
+        .create_split(&owner, &vec![&s.env, r(&s.env, 10_000)]);
+    s.client.transfer_ownership(&id, &next);
+    assert_eq!(s.env.events().all().events().len(), 1);
+    assert_eq!(s.client.get_split(&id).owner, next);
+}
+
+#[test]
+fn split_and_counter_stay_live_with_only_payments() {
+    use soroban_sdk::testutils::Ledger as _;
+    let s = setup();
+    let owner = Address::generate(&s.env);
+    let id = s
+        .client
+        .create_split(&owner, &vec![&s.env, r(&s.env, 10_000)]);
+    let payer = Address::generate(&s.env);
+    mint(&s, &payer, 1_000);
+    // A payment every 60 days for a year and no new splits: the split and the
+    // instance holding split_count must both stay live.
+    for _ in 0..6 {
+        s.env
+            .ledger()
+            .with_mut(|l| l.sequence_number += 60 * DAY_IN_LEDGERS);
+        s.client.pay(&id, &payer, &s.token, &100);
+    }
+    assert_eq!(s.client.split_count(), 1);
+    assert_eq!(s.client.get_split(&id).id, id);
+}
