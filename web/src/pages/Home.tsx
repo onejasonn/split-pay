@@ -17,8 +17,14 @@ export function Home() {
   const [count, setCount] = useState<bigint | null>(null);
   const [demo, setDemo] = useState<Split | null>(null);
   useEffect(() => {
-    splitPay.read<bigint>("split_count").then(setCount).catch(() => {});
-    splitPay.read<Split>("get_split", [u64(1n)]).then(setDemo).catch(() => {});
+    // Preview the newest split; fall back to the static example if anything fails.
+    splitPay
+      .read<bigint>("split_count")
+      .then(async (n) => {
+        setCount(n);
+        if (n > 0n) setDemo(await splitPay.read<Split>("get_split", [u64(n)]));
+      })
+      .catch(() => {});
   }, []);
 
   return (

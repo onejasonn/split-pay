@@ -1,6 +1,7 @@
 import { CONTRACT_ID } from "../config";
 import { contractLink } from "../lib/stellar";
-import { Link, useTitle } from "../lib/router";
+import { useEffect } from "react";
+import { Link, useSection, useTitle } from "../lib/router";
 
 const SECTIONS = [
   ["start", "Getting started"],
@@ -20,14 +21,18 @@ const FAQ = [
 
 export function Docs() {
   useTitle("Docs · Split Pay");
+  const section = useSection();
+  useEffect(() => {
+    if (section) document.getElementById(section)?.scrollIntoView({ behavior: "smooth" });
+  }, [section]);
   return (
     <div className="mx-auto grid max-w-6xl gap-10 px-5 py-12 lg:grid-cols-[220px_1fr]">
       <aside className="hidden lg:block">
         <nav className="sticky top-24 space-y-1 text-sm">
           {SECTIONS.map(([id, label]) => (
-            <a key={id} href={`#/docs`} onClick={(e) => (e.preventDefault(), document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }))} className="block rounded-lg px-3 py-2 text-plum hover:bg-white">
+            <Link key={id} to={`/docs/${id}`} className="block rounded-lg px-3 py-2 text-plum hover:bg-white">
               {label}
-            </a>
+            </Link>
           ))}
         </nav>
       </aside>
